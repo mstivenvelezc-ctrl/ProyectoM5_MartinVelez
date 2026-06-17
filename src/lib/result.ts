@@ -15,3 +15,17 @@ export function githubErrorMessage(error: unknown): string {
     }
     return error instanceof Error ? error.message : "Error desconocido.";
 }
+
+export function needsConfirmation(text: string) {
+    return {
+        content: [
+            {
+                type: "text" as const,
+                text:
+                    "⚠️ ACCIÓN DESTRUCTIVA — REQUIERE CONFIRMACIÓN ⚠️\n\n" +
+                    `${text}\n\n` +
+                    'Esta acción NO se ha ejecutado. Para proceder, vuelve a llamar la tool con "confirm": true.',
+            },
+        ],
+    };
+}

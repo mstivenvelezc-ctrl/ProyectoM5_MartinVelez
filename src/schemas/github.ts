@@ -8,8 +8,8 @@ export const repoNameSchema = z
     .min(3, "El nombre del repositorio debe tener al menos 3 caracteres.")
     .max(100, "El nombre del repositorio no puede superar los 100 caracteres.")
     .regex(
-        /^[a-zA-Z0-9-]+$/,
-        "Nombre inválido: solo se permiten letras, números y guiones (sin espacios ni símbolos).",
+        /^[a-zA-Z0-9._-]+$/,
+        "Nombre inválido: solo se permiten letras, números, guiones, puntos y underscores (sin espacios ni símbolos).",
     );
 
 // Owner = usuario u organización. Reglas de username de GitHub:
@@ -81,3 +81,37 @@ export const perPageSchema = z
     .max(100, "El máximo permitido por GitHub es 100.")
     .optional()
     .default(30);
+
+// Número de issue (entero positivo).
+export const issueNumberSchema = z
+    .number()
+    .int("El número de issue debe ser un entero.")
+    .positive("El número de issue debe ser mayor que 0.");
+
+// SHA de commit: hexadecimal de 7 a 40 caracteres.
+export const commitShaSchema = z
+    .string()
+    .trim()
+    .regex(
+        /^[0-9a-f]{7,40}$/i,
+        "SHA inválido: debe ser hexadecimal de 7 a 40 caracteres.",
+    );
+
+// Confirmación humana para acciones destructivas.
+export const confirmSchema = z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+        "Debe ser true para ejecutar la acción destructiva. Si es false, la tool solo muestra una alerta sin ejecutar.",
+    );
+
+// Reescritura del nombre completo "owner/repo" como confirmación extra
+// para borrados de repositorio (estilo GitHub).
+export const confirmNameSchema = z
+    .string()
+    .trim()
+    .optional()
+    .describe(
+        'Para confirmar el borrado, escribe el nombre completo "owner/repo" exactamente igual.',
+    );
