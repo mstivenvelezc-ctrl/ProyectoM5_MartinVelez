@@ -11,6 +11,7 @@ import { registerDeleteRepositoryTool } from "../tools/deleteRepository.js";
 import { registerRevertToCommitTool } from "../tools/revertToCommit.js";
 import { registerMergeBranchTool } from "../tools/mergeBranch.js";
 import { registerSyncBranchTool } from "../tools/syncBranch.js";
+import { registerCreateBranchTool } from "../tools/createBranch.js";
 
 export const server = new McpServer({
     name: "mstivenvelezc-ctrl-agent",
@@ -29,6 +30,7 @@ async function main() {
     registerRevertToCommitTool(server);
     registerMergeBranchTool(server);
     registerSyncBranchTool(server);
+    registerCreateBranchTool(server);
 
     const transport = new StdioServerTransport();
     await server.connect(transport);
