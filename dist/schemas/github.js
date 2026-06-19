@@ -55,6 +55,13 @@ export const branchSchema = z
     .trim()
     .min(1, "El nombre de la rama no puede estar vacío.")
     .optional();
+// Rama requerida (sin .optional()).
+export const requiredBranchSchema = z
+    .string()
+    .trim()
+    .min(1, "El nombre de la rama no puede estar vacío.")
+    .max(255, "El nombre de la rama es demasiado largo.")
+    .regex(/^[^\s~^:?*\[\\]+(?<!\.lock)$/, "Nombre de rama inválido según las reglas de Git.");
 export const isPrivateSchema = z.boolean().optional().default(false);
 export const perPageSchema = z
     .number()

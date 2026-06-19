@@ -9,6 +9,9 @@ import { registerGetRepositoryTool } from "../tools/getRepository.js";
 import { registerDeleteIssueTool } from "../tools/deletIssue.js";
 import { registerDeleteRepositoryTool } from "../tools/deleteRepository.js";
 import { registerRevertToCommitTool } from "../tools/revertToCommit.js";
+import { registerMergeBranchTool } from "../tools/mergeBranch.js";
+import { registerSyncBranchTool } from "../tools/syncBranch.js";
+import { registerCreateBranchTool } from "../tools/createBranch.js";
 export const server = new McpServer({
     name: "mstivenvelezc-ctrl-agent",
     version: "1.0.0",
@@ -23,6 +26,9 @@ async function main() {
     registerDeleteIssueTool(server);
     registerDeleteRepositoryTool(server);
     registerRevertToCommitTool(server);
+    registerMergeBranchTool(server);
+    registerSyncBranchTool(server);
+    registerCreateBranchTool(server);
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error("Server is running...");

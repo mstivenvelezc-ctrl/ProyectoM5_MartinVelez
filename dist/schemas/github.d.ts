@@ -9,6 +9,7 @@ export declare const filePathSchema: z.ZodEffects<z.ZodEffects<z.ZodString, stri
 export declare const commitMessageSchema: z.ZodString;
 export declare const fileContentSchema: z.ZodString;
 export declare const branchSchema: z.ZodOptional<z.ZodString>;
+export declare const requiredBranchSchema: z.ZodString;
 export declare const isPrivateSchema: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
 export declare const perPageSchema: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
 export declare const issueNumberSchema: z.ZodNumber;
