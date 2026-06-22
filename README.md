@@ -215,6 +215,52 @@ Las tools marcadas con ⚠️ (`delete_repository`, `delete_issue`, `revert_to_c
 
 ---
 
+## Decisiones Técnicas
+
+Estas son las decisiones tecnicas mas importantes del proyecto, explicadas con mis propias palabras despues de revisar el codigo a fondo.
+
+### 1. Confirmacion en dos pasos para acciones destructivas
+
+Las tools `delete_repository`, `delete_issue` y `revert_to_commit` no ejecutan la accion en la primera llamada si no se manda `confirm: true`, en cambio devuelven una alerta explicando que se va a perder. Se decidio de esta manera porque son acciones muy riesgozas que ponen en riesgo todo un proyecto y pueden perjudicar la operacion de manera permanente. En GitHub estas acciones no se pueden deshacer despues, asi que no sirve ejecutar primero y arreglar el error mas tarde, hay que evitar el accidente antes de que pase, no despues. La alerta tambien le muestra al agente exactamente que se va a borrar (titulo, nombre, url) para que pueda decidir si de verdad quiere insistir o no.
+
+### 2. Confirmacion extra con `confirmName` solo en `delete_repository`
+
+Ademas del `confirm: true`, esta tool pide reescribir el `owner/repo` exacto en `confirmName`, para estar seguros que lo que queremos eliminar coinside con la accion que estamos tomando. Esto solo se hizo para borrar repositorios y no para issues o el revert, porque borrar un repo tiene un radio de impacto mucho mas grande: se pierden todos los issues, pull requests, wiki, releases y forks de una sola vez, mientras que borrar un issue o revertir una rama solo afecta una parte chiquita del proyecto. A mayor riesgo, mayor friccion para confirmar, esa es la idea.
+
+### 3. Octokit como singleton
+
+El cliente de Octokit se crea una sola vez en `getOctokit()` y se reutiliza, en lugar de crear una instancia nueva en cada tool, para no tener que agregar instancias repetidas en cada una y para mantener todo mas centralizado. Tambien evita repetir la validacion del `GITHUB_TOKEN` en doce lugares distintos en vez de uno solo, y si algun dia se quiere agregar cache o control de rate-limit, hay un unico punto donde hacerlo.
+
+### 4. GraphQL solo para `delete_issue`
+
+Casi todas las tools usan los metodos REST normales de Octokit, pero `delete_issue` usa `octokit.graphql()` con la mutacion `deleteIssue`. Esto es porque GitHub no tiene un endpoint REST para borrar issues de verdad, por REST solo se pueden cerrar, el unico lugar donde existe el borrado permanente es la API de GraphQL. Por eso la tool primero usa REST (`issues.get`) para traer el issue y obtener su `node_id`, y despues usa GraphQL nada mas para la mutacion del borrado.
+
+### 5. Transporte stdio en vez de HTTP
+
+El servidor usa `StdioServerTransport` porque se usa de manera local, lo que facilita la comunicacion al estar dentro del mismo equipo, sin tener que manejar puertos ni autenticacion de red. El host (Antigravity) simplemente lanza el servidor como proceso hijo y habla por stdin/stdout. HTTP se usaria en el caso de hacer deploy del servidor en la nube, para que varias personas o maquinas distintas puedan compartir una sola instancia corriendo de forma remota.
+
+### 6. Esquemas de Zod centralizados
+
+Todas las reglas de validacion (nombre de repo, owner, rama, sha, etc.) viven en `src/schemas/github.ts` y cada tool las importa, en vez de que cada una defina sus propias reglas por separado. Esto se hizo para mantener el proyecto mas ordenado y mas facil de escalar con nuevas tools a futuro, y tambien evita que dos tools terminen validando lo mismo con reglas un poco distintas sin que nadie se de cuenta. Si GitHub cambia una regla se actualiza en un solo lugar y todas las tools quedan iguales otra vez.
+
+### 7. `filePathSchema` rechaza rutas absolutas y con `..`
+
+El parametro `path` de `create_commit` se inserta directo en la url del endpoint de Contents API, y como ese valor lo decide un LLM interpretando un prompt, se trata como un input no confiable. Una ruta que empiece con `/` puede generar una ruta mal formada en la API, y una ruta con `..` es el patron clasico de path traversal. Aunque aqui no hay un filesystem real detras (es el arbol de git, no carpetas reales), se sigue la misma buena practica de sanitizar cualquier input que venga de afuera.
+
+### 8. Rama base `"main"` hardcodeada vs `default_branch` real (limitacion conocida)
+
+En `create_branch`, `merge_branch` y `sync_branch` el parametro `base` por defecto es el literal `"main"`, mientras que en `revert_to_commit`, cuando no se manda `branch`, el codigo si consulta a la API (`octokit.repos.get`) y usa el `default_branch` real del repositorio. Esto es una inconsistencia entre las tools del mismo proyecto: si un repositorio tiene su rama principal con otro nombre (`master`, `trunk`, etc.) las primeras tres tools van a fallar buscando `heads/main`, aunque el repo si tenga una rama por defecto valida, solo que con otro nombre. Queda documentado aqui como limitacion conocida, pendiente de corregir para que las tres consulten el `default_branch` real igual que ya hace `revert_to_commit`.
+
+### 9. Anotaciones `destructiveHint`, `idempotentHint` y `openWorldHint`
+
+Las tools `delete_repository`, `delete_issue` y `revert_to_commit` tienen estas anotaciones del protocolo MCP, que ninguna otra tool del proyecto tiene. Le sirven al host (Antigravity) para decidir como tratar la tool sin tener que leer su codigo por dentro: `destructiveHint: true` avisa que la accion puede causar perdida de datos irreversible, `idempotentHint` indica si llamarla varias veces con los mismos parametros es seguro, y `openWorldHint: true` indica que la tool interactua con un sistema externo impredecible (GitHub) y no con datos cerrados. Esto explica en parte por que Antigravity pide varias confirmaciones para una sola accion: el host agrega su propia capa de confirmacion por culpa del `destructiveHint`, ademas de la confirmacion que la tool ya implementa por dentro, son dos capas de seguridad independientes que se suman una arriba de la otra.
+
+### 10. `merge_branch` y `sync_branch` como tools separadas
+
+Las dos tools llaman a `octokit.repos.merge` casi igual, la unica diferencia real es la direccion: una trae los cambios de la rama principal hacia mi rama, y la otra envia mis cambios hacia la rama principal. Se decidio tener dos tools separadas en vez de una sola con un parametro de direccion porque asi el LLM elige la tool correcta solo por su nombre y descripcion, sin tener que adivinar bien un parametro ambiguo a partir del prompt del usuario. Lo que se pierde con esto es que el codigo de las dos tools queda casi duplicado, asi que si la logica de merge cambia hay que tocarla en dos archivos en vez de uno.
+
+---
+
 ## Pruebas
 
 El proyecto usa [Vitest](https://vitest.dev/) con un servidor MCP simulado (`src/test/mockServer.ts`) para probar cada tool sin llamar a la API real de GitHub.
