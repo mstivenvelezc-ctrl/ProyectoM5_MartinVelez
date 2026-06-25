@@ -1,8 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getOctokit } from "../github/client.js";
-import { fail, githubErrorMessage, needsConfirmation, ok } from "../lib/result.js";
+import { fail, githubErrorMessage, ok } from "../lib/result.js";
 import {
-    confirmSchema,
     issueNumberSchema,
     ownerSchema,
     repoNameSchema,
@@ -15,7 +14,8 @@ export function registerDeleteIssueTool(server: McpServer) {
             title: "Eliminar issue",
             description:
                 "Elimina permanentemente un issue (vía GraphQL deleteIssue). " +
-                "Requiere ser admin/owner del repo. Acción irreversible: pide confirmación.",
+                "Requiere ser admin/owner del repo. Acción irreversible: pide confirmación real " +
+                "al usuario mediante un formulario (elicitation) que el agente no puede rellenar por sí solo.",
             annotations: {
                 destructiveHint: true,
                 idempotentHint: true,
@@ -25,10 +25,9 @@ export function registerDeleteIssueTool(server: McpServer) {
                 owner: ownerSchema,
                 repo: repoNameSchema,
                 issueNumber: issueNumberSchema,
-                confirm: confirmSchema,
             },
         },
-        async ({ owner, repo, issueNumber, confirm }) => {
+        async ({ owner, repo, issueNumber }) => {
             try {
                 const octokit = getOctokit();
 
@@ -40,13 +39,29 @@ export function registerDeleteIssueTool(server: McpServer) {
                     issue_number: issueNumber,
                 });
 
-                if (!confirm) {
-                    return needsConfirmation(
-                        `Se eliminará PERMANENTEMENTE el issue #${issue.number} de ${owner}/${repo}:\n` +
+                const elicitation = await server.server.elicitInput({
+                    mode: "form",
+                    message:
+                        `⚠️ Se eliminará PERMANENTEMENTE el issue #${issue.number} de ${owner}/${repo}:\n` +
                         `"${issue.title}" (estado: ${issue.state})\n` +
                         `URL: ${issue.html_url}\n\n` +
                         "El issue no se puede recuperar después de borrarlo.",
-                    );
+                    requestedSchema: {
+                        type: "object",
+                        properties: {
+                            confirmDelete: {
+                                type: "boolean",
+                                title: "Confirmo que quiero eliminar este issue",
+                                description: "Marca esta casilla para confirmar el borrado.",
+                                default: false,
+                            },
+                        },
+                        required: ["confirmDelete"],
+                    },
+                });
+
+                if (elicitation.action !== "accept" || elicitation.content?.confirmDelete !== true) {
+                    return ok(`Eliminación del issue #${issue.number} cancelada por el usuario.`);
                 }
 
                 await octokit.graphql(

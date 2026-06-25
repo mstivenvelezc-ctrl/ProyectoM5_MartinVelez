@@ -36,6 +36,59 @@ graph LR
 
 ---
 
+## Flujo de una petición
+
+Esto es todo lo que sucede, paso a paso, desde que el usuario escribe un prompt en Antigravity hasta que recibe una respuesta:
+
+```mermaid
+flowchart TD
+    subgraph HOST["Antigravity (Host) + LLM"]
+        A([Usuario escribe un prompt]) --> B[LLM elige la tool\ny los parametros]
+        P[LLM redacta la respuesta\nen lenguaje natural] --> Q([Antigravity muestra\nel resultado al usuario])
+    end
+
+    subgraph SERVER["MCP Server"]
+        D[Enruta al handler\nde la tool registrada] --> E{Validacion Zod\ndel inputSchema}
+        E -->|invalido| F[Responde error\nde validacion]
+        E -->|valido| G{Es una tool\ndestructiva?}
+        G -->|no| I[getOctokit:\nlee GITHUB_TOKEN]
+        G -->|si| H{confirm: true?}
+        H -->|no| J["needsConfirmation():\nalerta, NO ejecuta nada"]
+        H -->|si| I
+        L{Resultado}
+        L -->|error| M["fail(): githubErrorMessage"]
+        L -->|exito| N["ok(): formatea el resultado"]
+    end
+
+    subgraph GH["GitHub API"]
+        K[Llamada REST\no GraphQL]
+    end
+
+    B -->|"tool call via stdio"| D
+    I --> K --> L
+    F --> O[Respuesta via stdio]
+    J --> O
+    M --> O
+    N --> O
+    O --> P
+```
+
+### Detalle de cada etapa
+
+1. **Prompt del usuario** — el usuario escribe en lenguaje natural dentro de Antigravity (ej. "borra el issue #12 de mi-repo").
+2. **El LLM elige la tool** — interpreta el prompt, decide cuál de las 12 tools llamar (por nombre y descripción) y construye los parámetros (`owner`, `repo`, `issueNumber`, etc.).
+3. **Llamada MCP vía stdio** — Antigravity, como host, manda la *tool call* al proceso del servidor por stdin (el transporte es `StdioServerTransport`, ver [Decisión técnica #5](#5-transporte-stdio-en-vez-de-http)).
+4. **Enrutamiento interno** — el `McpServer` (`src/server/index.ts`) despacha la llamada al handler de la tool correspondiente, registrada con `server.registerTool(...)`.
+5. **Validación con Zod** — el `inputSchema` de la tool (definido en `src/schemas/github.ts`) valida cada parámetro antes de tocar nada. Si algo no cumple las reglas (ej. un nombre de rama inválido), el flujo se detiene aquí y nunca llega a GitHub.
+6. **Chequeo de confirmación (solo en tools destructivas)** — `delete_repository`, `delete_issue` y `revert_to_commit` revisan `confirm`. Si es `false`/no se envió, responden con `needsConfirmation()` y **no ejecutan nada real todavía**.
+7. **Obtención del cliente Octokit** — `getOctokit()` lee `GITHUB_TOKEN` del entorno y reutiliza la instancia singleton (o lanza error si falta el token).
+8. **Llamada a la API de GitHub** — casi todas las tools usan métodos REST de Octokit; `delete_issue` usa GraphQL porque REST no soporta el borrado real de issues.
+9. **Manejo de la respuesta** — si GitHub responde con error, se formatea con `githubErrorMessage()` y se devuelve vía `fail()` (`isError: true`). Si responde con éxito, se formatea un mensaje legible con `ok()`.
+10. **Vuelta al LLM** — el resultado (texto plano) viaja de regreso por el mismo canal stdio hasta el cliente MCP (el LLM dentro de Antigravity).
+11. **Respuesta final al usuario** — el LLM redacta una respuesta en lenguaje natural a partir de ese texto, y Antigravity se la muestra al usuario.
+
+---
+
 ## Requisitos previos
 
 - [Node.js](https://nodejs.org/) 18 o superior.

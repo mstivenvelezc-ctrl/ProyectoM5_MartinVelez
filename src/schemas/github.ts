@@ -116,13 +116,3 @@ export const confirmSchema = z
     .describe(
         "Debe ser true para ejecutar la acción destructiva. Si es false, la tool solo muestra una alerta sin ejecutar.",
     );
-
-// Reescritura del nombre completo "owner/repo" como confirmación extra
-// para borrados de repositorio (estilo GitHub).
-export const confirmNameSchema = z
-    .string()
-    .trim()
-    .optional()
-    .describe(
-        'Para confirmar el borrado, escribe el nombre completo "owner/repo" exactamente igual.',
-    );
